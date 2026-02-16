@@ -240,3 +240,94 @@ export async function adminGetMTDTotals(): Promise<{
 
   return totals
 }
+
+/**
+ * Workspace activity data (presence tracking)
+ */
+export interface WorkspaceActivity {
+  workspace_id: string
+  workspace_name: string
+  created_at: string
+  // Overall activity
+  last_active_at_overall: string | null
+  active_users_now_overall: number
+  // Per-app last active
+  last_active_at_readvise: string | null
+  last_active_at_rebuild: string | null
+  last_active_at_redeal: string | null
+  last_active_at_recontrol: string | null
+  // Per-app active now counts
+  active_users_now_readvise: number
+  active_users_now_rebuild: number
+  active_users_now_redeal: number
+  active_users_now_recontrol: number
+}
+
+/**
+ * Workspace member activity data
+ */
+export interface WorkspaceMemberActivity {
+  user_id: string
+  primary_email: string
+  display_name: string | null
+  platform_role: string
+  workspace_role: string
+  last_login_at: string | null
+  // Overall last seen
+  last_seen_at_overall: string | null
+  // Per-app last seen
+  last_seen_at_readvise: string | null
+  last_seen_at_rebuild: string | null
+  last_seen_at_redeal: string | null
+  last_seen_at_recontrol: string | null
+  // Active now flag
+  active_now: boolean
+}
+
+/**
+ * List all workspaces with activity metrics
+ */
+export async function adminListWorkspacesActivity(
+  search?: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<WorkspaceActivity[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .schema('core')
+    .rpc('admin_list_workspaces_activity', {
+      p_search: search || null,
+      p_limit: limit,
+      p_offset: offset,
+    })
+
+  if (error) {
+    console.error('Error listing workspaces activity:', error)
+    throw error
+  }
+
+  return data || []
+}
+
+/**
+ * List workspace members with per-app activity
+ */
+export async function adminListWorkspaceMembersActivity(
+  workspaceId: string
+): Promise<WorkspaceMemberActivity[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .schema('core')
+    .rpc('admin_list_workspace_members_activity', {
+      p_workspace_id: workspaceId,
+    })
+
+  if (error) {
+    console.error('Error listing workspace members activity:', error)
+    throw error
+  }
+
+  return data || []
+}

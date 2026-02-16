@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { adminGetWorkspaceDetail, adminGetUsageSummary } from '@/lib/admin/rpc'
+import { adminGetWorkspaceDetail, adminGetUsageSummary, adminListWorkspaceMembersActivity } from '@/lib/admin/rpc'
 import { notFound } from 'next/navigation'
 import { TierPresetButtons } from '@/components/admin/tier-preset-buttons'
 import { AppToggle } from '@/components/admin/app-toggle'
@@ -26,15 +26,36 @@ function getUsageColor(percent: number): string {
   return 'bg-green-500'
 }
 
+function formatLastActive(timestamp: string | null): string {
+  if (!timestamp) return 'Never'
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return date.toLocaleDateString()
+}
+
 export default async function WorkspaceDetailPage({ params }: PageProps) {
   const { id } = await params
 
   let detail
   let usage
+  let membersActivity
 
   try {
     detail = await adminGetWorkspaceDetail(id)
     usage = await adminGetUsageSummary(id)
+    membersActivity = await adminListWorkspaceMembersActivity(id)
   } catch (error) {
     console.error('Error fetching workspace:', error)
     notFound()
@@ -284,32 +305,90 @@ export default async function WorkspaceDetailPage({ params }: PageProps) {
       {/* Members Panel */}
       <Card>
         <CardHeader>
-          <CardTitle>Members ({members?.length || 0})</CardTitle>
-          <CardDescription>Users with access to this workspace</CardDescription>
+          <CardTitle>Members ({membersActivity?.length || 0})</CardTitle>
+          <CardDescription>User activity across all apps</CardDescription>
         </CardHeader>
         <CardContent>
-          {!members || members.length === 0 ? (
+          {!membersActivity || membersActivity.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               No members yet
             </p>
           ) : (
-            <div className="space-y-2">
-              {members.map((member) => (
+            <div className="space-y-3">
+              {membersActivity.map((member) => (
                 <div
                   key={member.user_id}
-                  className="flex items-center justify-between p-3 rounded-lg border"
+                  className="p-4 rounded-lg border hover:bg-accent/50 transition-colors"
                 >
-                  <div>
-                    <p className="font-medium">{member.email}</p>
-                    <code className="text-xs text-muted-foreground font-mono">
-                      {member.user_id}
-                    </code>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium">{member.display_name || member.primary_email}</p>
+                        {member.active_now && (
+                          <Badge variant="default" className="h-5 bg-green-600 hover:bg-green-700">
+                            Active now
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{member.primary_email}</p>
+                      <code className="text-xs text-muted-foreground font-mono">
+                        {member.user_id}
+                      </code>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant="outline">{member.workspace_role}</Badge>
+                      {member.platform_role === 'super_admin' && (
+                        <Badge variant="default" className="bg-purple-600">Super Admin</Badge>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">{member.role}</Badge>
-                    <span className="text-xs text-muted-foreground">
-                      Joined {new Date(member.joined_at).toLocaleDateString()}
-                    </span>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Last active:</span>
+                      <span className="ml-1 font-medium">
+                        {formatLastActive(member.last_seen_at_overall)}
+                      </span>
+                    </div>
+                    {member.last_login_at && (
+                      <div>
+                        <span className="text-muted-foreground">Last login:</span>
+                        <span className="ml-1 font-medium">
+                          {formatLastActive(member.last_login_at)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Per-app activity */}
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Per-app activity:</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground">RE:advise</span>
+                        <span className={member.last_seen_at_readvise ? 'font-medium' : 'text-muted-foreground'}>
+                          {formatLastActive(member.last_seen_at_readvise)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground">RE:build</span>
+                        <span className={member.last_seen_at_rebuild ? 'font-medium' : 'text-muted-foreground'}>
+                          {formatLastActive(member.last_seen_at_rebuild)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground">RE:deal</span>
+                        <span className={member.last_seen_at_redeal ? 'font-medium' : 'text-muted-foreground'}>
+                          {formatLastActive(member.last_seen_at_redeal)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground">REcontrol</span>
+                        <span className={member.last_seen_at_recontrol ? 'font-medium' : 'text-muted-foreground'}>
+                          {formatLastActive(member.last_seen_at_recontrol)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { adminListWorkspaces } from '@/lib/admin/rpc'
+import { adminListWorkspacesActivity } from '@/lib/admin/rpc'
 
 interface PageProps {
   searchParams: Promise<{ search?: string }>
@@ -20,11 +20,30 @@ function getTierColor(tier: string): string {
   return 'text-gray-500'
 }
 
+function formatLastActive(timestamp: string | null): string {
+  if (!timestamp) return 'Never'
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return date.toLocaleDateString()
+}
+
 export default async function WorkspacesPage({ searchParams }: PageProps) {
   const params = await searchParams
   const search = params.search
 
-  const workspaces = await adminListWorkspaces(search, 100, 0)
+  const workspaces = await adminListWorkspacesActivity(search, 100, 0)
 
   return (
     <div className="space-y-6 blueprint-bg">
@@ -92,7 +111,7 @@ export default async function WorkspacesPage({ searchParams }: PageProps) {
                       <p className="text-sm text-muted-foreground truncate">
                         {workspace.owner_email}
                       </p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <span className="text-xs text-muted-foreground">
                           {workspace.member_count} member{workspace.member_count !== 1 ? 's' : ''}
                         </span>
@@ -100,6 +119,18 @@ export default async function WorkspacesPage({ searchParams }: PageProps) {
                         <span className="text-xs text-muted-foreground">
                           Created {new Date(workspace.created_at).toLocaleDateString()}
                         </span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground">
+                          Last active: {formatLastActive(workspace.last_active_at_overall)}
+                        </span>
+                        {workspace.active_users_now_overall > 0 && (
+                          <>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <Badge variant="default" className="text-xs h-5 bg-green-600 hover:bg-green-700">
+                              {workspace.active_users_now_overall} active now
+                            </Badge>
+                          </>
+                        )}
                       </div>
                     </div>
 
