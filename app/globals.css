@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  /* Indigo Blueprint - Deep indigo primary */
+  --primary: 248 75% 55%;
+  --primary-foreground: 250 100% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  /* Electric amber accent */
+  --accent: 38 100% 60%;
+  --accent-foreground: 20 10% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 248 75% 55%;
+  /* Chart colors for control room aesthetics */
+  --chart-1: 217 91% 60%; /* Electric blue */
+  --chart-2: 142 76% 36%; /* Matrix green */
+  --chart-3: 38 100% 60%; /* Amber alert */
+  --chart-4: 280 65% 60%; /* Purple accent */
+  --chart-5: 340 75% 55%; /* Critical red */
+  /* Blueprint aesthetic */
+  --grid-color: 248 30% 85%;
+  --glow-color: 217 91% 60%;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  /* Card slightly lighter than background for visibility */
+  --card: 222.2 70% 8%;
+  --card-foreground: 210 40% 98%;
+  /* Popover slightly lighter than background */
+  --popover: 222.2 70% 8%;
+  --popover-foreground: 210 40% 98%;
+  /* Indigo Blueprint - Lighter indigo for dark mode */
+  --primary: 248 70% 60%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  /* Electric amber accent for dark */
+  --accent: 38 95% 65%;
+  --accent-foreground: 20 10% 10%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  /* Border slightly lighter for card visibility */
+  --border: 217.2 32.6% 20%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 248 70% 60%;
+  /* Blueprint aesthetic for dark mode */
+  --grid-color: 248 20% 20%;
+  --glow-color: 217 91% 70%;
+}
+
+/* Indigo Blueprint Utility Classes */
+
+/* Blueprint grid background for operator-style dashboards */
+.blueprint-bg {
+  background-image:
+    linear-gradient(hsl(var(--grid-color) / 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--grid-color) / 0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Glow effect for live metrics and important data */
+.metric-glow {
+  text-shadow: 0 0 8px hsl(var(--glow-color) / 0.6);
+}
