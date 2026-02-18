@@ -51,6 +51,18 @@ export default async function DashboardLayout({
                 Sense Ops
               </a>
               <a
+                href="/sense/markets"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Markets
+              </a>
+              <a
+                href="/sense/requests"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Requests
+              </a>
+              <a
                 href="/audit"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
