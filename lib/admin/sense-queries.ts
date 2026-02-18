@@ -16,6 +16,7 @@ export type SenseMarketRow = {
   market_key: string
   name: string
   cbsa_code: string | null
+  enabled: boolean
   created_at: string
   // from sense_market_availability (nullable — row may not exist yet)
   status: string | null
@@ -32,10 +33,33 @@ export type SenseMarketRow = {
 export type BootstrapRunRow = {
   id: string
   status: string
-  step_status: Record<string, { status: string; error?: string }> | null
+  step_status: Record<string, { status: string; started_at?: string; finished_at?: string; error?: string }> | null
   counters: Record<string, number> | null
   error: string | null
   run_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export type IngestRunZillowRow = {
+  id: string
+  dataset: string
+  status: string
+  rows_processed: number | null
+  rows_emitted: number | null
+  error: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export type IngestRunAcsRow = {
+  id: string
+  year: number
+  status: string
+  tracts_expected: number | null
+  tracts_succeeded: number | null
+  tracts_failed: number | null
+  error: string | null
   started_at: string | null
   finished_at: string | null
 }
@@ -44,7 +68,9 @@ export type MarketDetailData = {
   market: SenseMarketRow
   tractCount: number
   countyCount: number
-  recentRuns: BootstrapRunRow[]
+  recentBootstrapRuns: BootstrapRunRow[]
+  recentZillowRuns: IngestRunZillowRow[]
+  recentAcsRuns: IngestRunAcsRow[]
 }
 
 export type MarketRequestRow = {
@@ -67,17 +93,15 @@ export type MarketRequestRow = {
 export async function adminListSenseMarkets(): Promise<SenseMarketRow[]> {
   const supabase = await createClient()
 
-  // Fetch markets
   const { data: markets, error: mErr } = await supabase
     .schema('core')
     .from('sense_markets')
-    .select('id, market_key, name, cbsa_code, created_at')
+    .select('id, market_key, name, cbsa_code, enabled, created_at')
     .order('name')
 
   if (mErr) throw new Error(`Failed to load sense_markets: ${mErr.message}`)
   if (!markets?.length) return []
 
-  // Fetch availability for all markets
   const { data: availability } = await supabase
     .schema('core')
     .from('sense_market_availability')
@@ -96,6 +120,7 @@ export async function adminListSenseMarkets(): Promise<SenseMarketRow[]> {
       market_key: m.market_key,
       name: m.name,
       cbsa_code: m.cbsa_code,
+      enabled: m.enabled ?? true,
       created_at: m.created_at,
       status: (avail?.status as string) ?? null,
       has_tracts: (avail?.has_tracts as boolean) ?? null,
@@ -122,14 +147,21 @@ export async function adminGetSenseMarketDetail(
   const { data: market, error: mErr } = await supabase
     .schema('core')
     .from('sense_markets')
-    .select('id, market_key, name, cbsa_code, created_at')
+    .select('id, market_key, name, cbsa_code, enabled, created_at')
     .eq('id', marketId)
     .maybeSingle()
 
   if (mErr) throw new Error(`Failed to load market: ${mErr.message}`)
   if (!market) return null
 
-  const [availResult, tractCountResult, countyCountResult, runsResult] = await Promise.all([
+  const [
+    availResult,
+    tractCountResult,
+    countyCountResult,
+    bootstrapRunsResult,
+    zillowRunsResult,
+    acsRunsResult,
+  ] = await Promise.all([
     supabase
       .schema('core')
       .from('sense_market_availability')
@@ -158,7 +190,23 @@ export async function adminGetSenseMarketDetail(
       .select('id, status, step_status, counters, error, run_at, started_at, finished_at')
       .eq('market_id', marketId)
       .order('created_at', { ascending: false })
+      .limit(15),
+
+    supabase
+      .schema('core')
+      .from('sense_ingest_runs_zillow')
+      .select('id, dataset, status, rows_processed, rows_emitted, error, started_at, finished_at')
+      .eq('market_id', marketId)
+      .order('created_at', { ascending: false })
       .limit(10),
+
+    supabase
+      .schema('core')
+      .from('sense_ingest_runs_acs')
+      .select('id, year, status, tracts_expected, tracts_succeeded, tracts_failed, error, started_at, finished_at')
+      .eq('market_id', marketId)
+      .order('created_at', { ascending: false })
+      .limit(5),
   ])
 
   const avail = availResult.data as Record<string, unknown> | null
@@ -168,6 +216,7 @@ export async function adminGetSenseMarketDetail(
     market_key: market.market_key,
     name: market.name,
     cbsa_code: market.cbsa_code,
+    enabled: market.enabled ?? true,
     created_at: market.created_at,
     status: (avail?.status as string) ?? null,
     has_tracts: (avail?.has_tracts as boolean) ?? null,
@@ -184,7 +233,9 @@ export async function adminGetSenseMarketDetail(
     market: marketRow,
     tractCount: tractCountResult.count ?? 0,
     countyCount: countyCountResult.count ?? 0,
-    recentRuns: (runsResult.data ?? []) as BootstrapRunRow[],
+    recentBootstrapRuns: (bootstrapRunsResult.data ?? []) as BootstrapRunRow[],
+    recentZillowRuns: (zillowRunsResult.data ?? []) as IngestRunZillowRow[],
+    recentAcsRuns: (acsRunsResult.data ?? []) as IngestRunAcsRow[],
   }
 }
 
@@ -212,7 +263,6 @@ export async function adminListMarketRequests(
   if (rErr) throw new Error(`Failed to load market_requests: ${rErr.message}`)
   if (!requests?.length) return []
 
-  // Fetch workspace names in bulk
   const workspaceIds = [...new Set(requests.map((r: Record<string, unknown>) => r.workspace_id as string))]
   const { data: workspaces } = await admin
     .schema('core')

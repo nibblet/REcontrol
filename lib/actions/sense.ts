@@ -21,47 +21,139 @@ async function assertSuperAdmin() {
   return user
 }
 
+function getReadviseInternalUrl() {
+  const baseUrl = process.env.READVISE_INTERNAL_URL
+  if (!baseUrl) throw new Error('READVISE_INTERNAL_URL is not configured')
+  return baseUrl
+}
+
+function getServiceKey() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
+  return key
+}
+
+function internalHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${getServiceKey()}`,
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Bootstrap
+// Bootstrap (full pipeline)
 // ---------------------------------------------------------------------------
 
 export type TriggerBootstrapResult =
-  | { ok: true; runId?: string }
+  | { ok: true }
   | { ok: false; error: string }
 
-/**
- * Fire-and-forget: POST to readvise internal API to start bootstrap pipeline.
- * Returns immediately with 202 — the run is tracked in sense_ingest_runs_market_bootstrap.
- */
 export async function triggerBootstrap(
   marketKey: string
 ): Promise<TriggerBootstrapResult> {
   try {
     await assertSuperAdmin()
-
-    const baseUrl = process.env.READVISE_INTERNAL_URL
-    if (!baseUrl) {
-      return { ok: false, error: 'READVISE_INTERNAL_URL is not configured' }
-    }
-
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!serviceKey) {
-      return { ok: false, error: 'SUPABASE_SERVICE_ROLE_KEY is not configured' }
-    }
-
-    const res = await fetch(`${baseUrl}/api/internal/sense/bootstrap`, {
+    const res = await fetch(`${getReadviseInternalUrl()}/api/internal/sense/bootstrap`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${serviceKey}`,
-      },
+      headers: internalHeaders(),
       body: JSON.stringify({ marketKey }),
     })
-
     if (!res.ok) {
-      const body = await res.text()
-      return { ok: false, error: `Bootstrap API returned ${res.status}: ${body}` }
+      return { ok: false, error: `Bootstrap API returned ${res.status}: ${await res.text()}` }
     }
+    revalidatePath(`/sense/markets`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Run individual stage
+// ---------------------------------------------------------------------------
+
+export type SenseStage =
+  | 'tracts'
+  | 'crosswalk'
+  | 'acs'
+  | 'zillow'
+  | 'hud_safmr'
+  | 'snapshots'
+  | 'neighborhoods'
+  | 'validate'
+  | 'publish'
+
+export type RunStageOptions = {
+  acsYear?: number
+  asOfQuarter?: string
+  safmrXlsxPath?: string
+  safmrFyYear?: number
+  zillowDatasets?: string[]
+  zillowMonthsBack?: number
+  workspaceId?: string   // required for snapshots / neighborhoods
+}
+
+export type RunStageResult =
+  | { ok: true; async: true }
+  | { ok: true; async: false; result: Record<string, unknown> }
+  | { ok: false; error: string }
+
+const ASYNC_STAGES: SenseStage[] = [
+  'tracts', 'crosswalk', 'acs', 'zillow', 'hud_safmr', 'snapshots', 'neighborhoods',
+]
+
+export async function runStage(
+  marketKey: string,
+  stage: SenseStage,
+  options?: RunStageOptions
+): Promise<RunStageResult> {
+  try {
+    await assertSuperAdmin()
+    const res = await fetch(`${getReadviseInternalUrl()}/api/internal/sense/run-stage`, {
+      method: 'POST',
+      headers: internalHeaders(),
+      body: JSON.stringify({ marketKey, stage, options: options ?? {} }),
+    })
+
+    const isAsync = ASYNC_STAGES.includes(stage)
+    if (isAsync && res.status === 202) {
+      revalidatePath(`/sense/markets`)
+      return { ok: true, async: true }
+    }
+
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return { ok: false, error: body.error ?? `API returned ${res.status}` }
+    }
+
+    revalidatePath(`/sense/markets`)
+    return { ok: true, async: false, result: body }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Enable / Disable market
+// ---------------------------------------------------------------------------
+
+export type ToggleEnabledResult = { ok: true } | { ok: false; error: string }
+
+export async function toggleMarketEnabled(
+  marketId: string,
+  enabled: boolean
+): Promise<ToggleEnabledResult> {
+  try {
+    await assertSuperAdmin()
+    const admin = getAdminClient()
+
+    const { error } = await admin
+      .schema('core')
+      .from('sense_markets')
+      .update({ enabled })
+      .eq('id', marketId)
+
+    if (error) return { ok: false, error: error.message }
 
     revalidatePath('/sense/markets')
     return { ok: true }
@@ -71,7 +163,7 @@ export async function triggerBootstrap(
 }
 
 // ---------------------------------------------------------------------------
-// Validate
+// Validate (sync — returns readiness result)
 // ---------------------------------------------------------------------------
 
 export type ValidateResult =
@@ -81,31 +173,15 @@ export type ValidateResult =
 export async function validateMarket(marketKey: string): Promise<ValidateResult> {
   try {
     await assertSuperAdmin()
-
-    const baseUrl = process.env.READVISE_INTERNAL_URL
-    if (!baseUrl) {
-      return { ok: false, error: 'READVISE_INTERNAL_URL is not configured' }
-    }
-
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!serviceKey) {
-      return { ok: false, error: 'SUPABASE_SERVICE_ROLE_KEY is not configured' }
-    }
-
-    const res = await fetch(`${baseUrl}/api/internal/sense/validate`, {
+    const res = await fetch(`${getReadviseInternalUrl()}/api/internal/sense/validate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${serviceKey}`,
-      },
+      headers: internalHeaders(),
       body: JSON.stringify({ marketKey }),
     })
-
     const body = await res.json().catch(() => ({}))
     if (!res.ok) {
-      return { ok: false, error: `Validate API returned ${res.status}: ${JSON.stringify(body)}` }
+      return { ok: false, error: body.error ?? `Validate API returned ${res.status}` }
     }
-
     return { ok: true, result: body }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
@@ -113,32 +189,25 @@ export async function validateMarket(marketKey: string): Promise<ValidateResult>
 }
 
 // ---------------------------------------------------------------------------
-// Publish (set market availability status = 'available')
+// Publish (validate + write availability)
 // ---------------------------------------------------------------------------
 
-export type PublishResult = { ok: true } | { ok: false; error: string }
+export type PublishResult = { ok: true; result: Record<string, unknown> } | { ok: false; error: string }
 
-export async function publishMarket(marketId: string): Promise<PublishResult> {
+export async function publishMarket(marketId: string, marketKey: string): Promise<PublishResult> {
   try {
     await assertSuperAdmin()
-    const admin = getAdminClient()
-
-    const { error } = await admin
-      .schema('core')
-      .from('sense_market_availability')
-      .upsert(
-        {
-          market_id: marketId,
-          status: 'available',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'market_id' }
-      )
-
-    if (error) return { ok: false, error: error.message }
-
+    const res = await fetch(`${getReadviseInternalUrl()}/api/internal/sense/run-stage`, {
+      method: 'POST',
+      headers: internalHeaders(),
+      body: JSON.stringify({ marketKey, stage: 'publish' }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return { ok: false, error: body.error ?? `Publish API returned ${res.status}` }
+    }
     revalidatePath('/sense/markets')
-    return { ok: true }
+    return { ok: true, result: body }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
   }
