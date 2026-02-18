@@ -8,17 +8,6 @@ interface PageProps {
   searchParams: Promise<{ search?: string }>
 }
 
-function getTierBadgeVariant(tier: string): 'default' | 'secondary' | 'outline' {
-  if (tier === 'pro') return 'default'
-  if (tier === 'team') return 'secondary'
-  return 'outline'
-}
-
-function getTierColor(tier: string): string {
-  if (tier === 'pro') return 'text-purple-500'
-  if (tier === 'team') return 'text-blue-500'
-  return 'text-gray-500'
-}
 
 function formatLastActive(timestamp: string | null): string {
   if (!timestamp) return 'Never'
@@ -108,14 +97,7 @@ export default async function WorkspacesPage({ searchParams }: PageProps) {
                           {workspace.workspace_id.slice(0, 8)}
                         </code>
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {workspace.owner_email}
-                      </p>
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground">
-                          {workspace.member_count} member{workspace.member_count !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-xs text-muted-foreground">•</span>
                         <span className="text-xs text-muted-foreground">
                           Created {new Date(workspace.created_at).toLocaleDateString()}
                         </span>
@@ -134,32 +116,7 @@ export default async function WorkspacesPage({ searchParams }: PageProps) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4 ml-4">
-                      {/* App Tiers */}
-                      <div className="hidden md:flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground w-16">RE:advise</span>
-                          <Badge variant={getTierBadgeVariant(workspace.tier_readvise)} className="w-16 justify-center">
-                            {workspace.tier_readvise}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground w-16">RE:build</span>
-                          <Badge variant={getTierBadgeVariant(workspace.tier_rebuild)} className="w-16 justify-center">
-                            {workspace.tier_rebuild}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground w-16">RE:deal</span>
-                          <Badge variant={getTierBadgeVariant(workspace.tier_redeal)} className="w-16 justify-center">
-                            {workspace.tier_redeal}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      {/* Arrow */}
-                      <div className="text-muted-foreground">→</div>
-                    </div>
+                    <div className="text-muted-foreground ml-4">→</div>
                   </div>
                 </Link>
               ))}
