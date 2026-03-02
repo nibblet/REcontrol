@@ -23,8 +23,23 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const themeScript = `
+(function() {
+  try {
+    var stored = localStorage.getItem('theme');
+    var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var resolved = (stored === 'dark' || stored === 'light') ? stored : (systemDark ? 'dark' : 'light');
+    document.documentElement.classList.remove('light', 'dark');
+    document.documentElement.classList.add(resolved);
+  } catch (e) {}
+})();
+`.trim()
+
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

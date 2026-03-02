@@ -53,7 +53,7 @@ function durationMs(started: string | null, finished: string | null): string {
 }
 
 const PIPELINE_STEPS = [
-  'validate', 'tracts', 'crosswalk', 'acs', 'zillow', 'hud_safmr', 'snapshots', 'neighborhoods', 'publish',
+  'validate', 'tracts', 'geometry', 'crosswalk', 'acs', 'zillow', 'hud_safmr', 'snapshots', 'neighborhoods', 'publish',
 ] as const
 
 type StepEntry = { status: string; started_at?: string; finished_at?: string; error?: string } | null
@@ -74,12 +74,15 @@ function StepChip({ name, entry }: { name: string; entry: StepEntry }) {
       ? 'bg-blue-100 text-blue-800 border-blue-300'
       : entry.status === 'failed'
       ? 'bg-red-100 text-red-800 border-red-300'
+      : entry.status === 'skipped'
+      ? 'bg-amber-50 text-amber-800 border-amber-200'
       : 'bg-muted text-muted-foreground border-border'
 
   const icon =
     entry.status === 'completed' ? '✓' :
     entry.status === 'running' ? '⟳' :
-    entry.status === 'failed' ? '✗' : '·'
+    entry.status === 'failed' ? '✗' :
+    entry.status === 'skipped' ? '−' : '·'
 
   return (
     <span
@@ -283,14 +286,14 @@ export default async function MarketDetailPage({ params }: Props) {
           <CardHeader>
             <CardTitle>Controls</CardTitle>
             <CardDescription>
-              Bootstrap runs the full pipeline. Individual stages run only the selected step.
-              Validate &amp; Publish is synchronous and returns the result immediately.
+              Bootstrap runs the full pipeline (validate → tracts → geometry → crosswalk → ACS → Zillow → …). Individual stages run only the selected step. Validate &amp; Publish is synchronous and returns the result immediately.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <MarketActions
               marketId={market.id}
               marketKey={market.market_key}
+              marketName={market.name}
               enabled={market.enabled}
             />
           </CardContent>
@@ -302,9 +305,13 @@ export default async function MarketDetailPage({ params }: Props) {
         <CardHeader>
           <CardTitle>Bootstrap Run Timeline</CardTitle>
           <CardDescription>
-            {recentBootstrapRuns.length > 0
-              ? `Last ${recentBootstrapRuns.length} runs — hover step chips for duration details`
-              : 'No runs yet'}
+            {recentBootstrapRuns.length > 0 ? (
+              <>
+                Last {recentBootstrapRuns.length} runs. Steps: validate → tracts → geometry → crosswalk → ACS → Zillow → SAFMR → … Hover chips for details. Refresh to see latest.
+              </>
+            ) : (
+              'No runs yet. Click Bootstrap Market to start (pipeline includes tract geometry fetch).'
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>

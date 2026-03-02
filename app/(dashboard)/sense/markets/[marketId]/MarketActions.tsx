@@ -13,6 +13,7 @@ import {
   type SenseStage,
   type RunStageOptions,
 } from '@/lib/actions/sense'
+import { SafmrImportModal } from './SafmrImportModal'
 
 // ---------------------------------------------------------------------------
 // Stage definitions
@@ -28,11 +29,12 @@ type StageOption = {
 
 const STAGES: StageOption[] = [
   { id: 'tracts',        label: 'Tracts',           description: 'Fetch tract IDs for CBSA from Census API',         async: true  },
+  { id: 'geometry',      label: 'Geometry',         description: 'Import tract geometries (Census TIGER) for market',  async: true  },
   { id: 'crosswalk',     label: 'Crosswalk',         description: 'Refresh ZIP→tract crosswalk from HUD USPS',        async: true  },
   { id: 'acs',           label: 'ACS',               description: 'Ingest ACS 5-year data for all market tracts',     async: true  },
   { id: 'zillow',        label: 'FHFA / Zillow',     description: 'Ingest Zillow HPI CSV files (must be on server)',  async: true  },
-  { id: 'hud_safmr',    label: 'HUD SAFMR',         description: 'Ingest SAFMR XLSX (must be on server)',            async: true  },
-  { id: 'snapshots',     label: 'Snapshots',         description: 'Build tract snapshots — requires workspace ID',    async: true,  needsWorkspaceId: true },
+  { id: 'hud_safmr',    label: 'HUD SAFMR',         description: 'Import SAFMR XLSX via upload (use Import SAFMR below)', async: true  },
+  { id: 'snapshots',     label: 'Snapshots',         description: 'Build tract snapshots (market-level; check server logs for result)', async: true },
   { id: 'neighborhoods', label: 'Neighborhoods',     description: 'Refresh neighborhood weights — requires workspace ID', async: true, needsWorkspaceId: true },
   { id: 'validate',      label: 'Validate',          description: 'Run readiness checks and show pass/fail',          async: false },
   { id: 'publish',       label: 'Validate & Publish','description': 'Validate then write availability record',        async: false },
@@ -66,6 +68,7 @@ function useAction() {
 type Props = {
   marketId: string
   marketKey: string
+  marketName: string
   enabled: boolean
 }
 
@@ -73,7 +76,7 @@ type Props = {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function MarketActions({ marketId, marketKey, enabled: initialEnabled }: Props) {
+export default function MarketActions({ marketId, marketKey, marketName, enabled: initialEnabled }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
 
@@ -87,9 +90,12 @@ export default function MarketActions({ marketId, marketKey, enabled: initialEna
   const [selectedStage, setSelectedStage] = useState<SenseStage | ''>('')
   const [workspaceId, setWorkspaceId] = useState('')
   const [validateResult, setValidateResult] = useState<Record<string, unknown> | null>(null)
+  const [safmrModalOpen, setSafmrModalOpen] = useState(false)
+  const [bootstrapForce, setBootstrapForce] = useState(false)
 
   const selectedStageDef = STAGES.find((s) => s.id === selectedStage)
   const needsWs = selectedStageDef?.needsWorkspaceId ?? false
+  const useSafmrImport = selectedStage === 'hud_safmr'
 
   // -------------------------------------------------------------------------
   // Handlers
@@ -101,12 +107,14 @@ export default function MarketActions({ marketId, marketKey, enabled: initialEna
 
   async function handleBootstrap() {
     bootstrap.start()
-    const result = await triggerBootstrap(marketKey)
+    const result = await triggerBootstrap(marketKey, { force: bootstrapForce })
     if (result.ok) {
-      bootstrap.succeed('Bootstrap started — runs async in readvise')
+      bootstrap.succeed('Bootstrap started. Pipeline: validate → tracts → geometry → crosswalk → ACS → Zillow → … Refresh to see progress.')
       setTimeout(() => { bootstrap.reset(); refreshPage() }, 3000)
+      // Refresh again so geometry step (runs after tracts) can appear in the timeline
+      setTimeout(refreshPage, 15000)
     } else {
-      bootstrap.fail(result.error)
+      bootstrap.fail(result.error || 'Bootstrap failed (check server logs for details)')
     }
   }
 
@@ -166,16 +174,38 @@ export default function MarketActions({ marketId, marketKey, enabled: initialEna
       {/* Row 1: primary actions + enable toggle */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Bootstrap */}
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleBootstrap}
+            disabled={isAnyLoading || bootstrap.state === 'ok'}
+            className="min-w-[160px]"
+          >
+            {bootstrap.state === 'loading'
+              ? 'Triggering…'
+              : bootstrap.state === 'ok'
+              ? '✓ Started'
+              : 'Bootstrap Market'}
+          </Button>
+          <label className="flex items-center gap-1.5 cursor-pointer select-none text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={bootstrapForce}
+              onChange={(e) => setBootstrapForce(e.target.checked)}
+              disabled={isAnyLoading}
+              className="rounded border-input"
+            />
+            Force re-run
+          </label>
+        </div>
+
+        {/* Import SAFMR (upload file; works in production) */}
         <Button
-          onClick={handleBootstrap}
-          disabled={isAnyLoading || bootstrap.state === 'ok'}
-          className="min-w-[160px]"
+          variant="outline"
+          onClick={() => setSafmrModalOpen(true)}
+          disabled={isAnyLoading}
+          className="min-w-[140px]"
         >
-          {bootstrap.state === 'loading'
-            ? 'Triggering…'
-            : bootstrap.state === 'ok'
-            ? '✓ Started'
-            : 'Bootstrap Market'}
+          Import SAFMR
         </Button>
 
         {/* Enable/Disable toggle */}
@@ -229,7 +259,7 @@ export default function MarketActions({ marketId, marketKey, enabled: initialEna
           <Button
             variant="outline"
             onClick={handleRunStage}
-            disabled={!selectedStage || isAnyLoading || stageRunner.state === 'ok' || (needsWs && !workspaceId.trim())}
+            disabled={!selectedStage || isAnyLoading || stageRunner.state === 'ok' || (needsWs && !workspaceId.trim()) || useSafmrImport}
           >
             {stageRunner.state === 'loading'
               ? 'Running…'
@@ -240,14 +270,18 @@ export default function MarketActions({ marketId, marketKey, enabled: initialEna
         </div>
 
         {selectedStageDef && (
-          <p className="text-xs text-muted-foreground">{selectedStageDef.description}</p>
+          <p className="text-xs text-muted-foreground">
+            {useSafmrImport
+              ? 'Use the "Import SAFMR" button above to upload an XLSX file (works in production).'
+              : selectedStageDef.description}
+          </p>
         )}
       </div>
 
       {/* Error messages */}
-      {bootstrap.state === 'error' && bootstrap.message && (
+      {bootstrap.state === 'error' && (
         <p className="text-sm text-destructive bg-destructive/10 rounded px-3 py-2">
-          Bootstrap: {bootstrap.message}
+          Bootstrap: {bootstrap.message || 'Request failed (check server logs)'}
         </p>
       )}
       {stageRunner.state === 'error' && stageRunner.message && (
@@ -282,6 +316,17 @@ export default function MarketActions({ marketId, marketKey, enabled: initialEna
           {bootstrap.message}
         </p>
       )}
+
+      <SafmrImportModal
+        open={safmrModalOpen}
+        onOpenChange={setSafmrModalOpen}
+        marketKey={marketKey}
+        marketName={marketName}
+        onSuccess={() => {
+          stageRunner.succeed('SAFMR import started — runs async. Check the timeline below.')
+          setTimeout(() => { stageRunner.reset(); refreshPage() }, 2000)
+        }}
+      />
     </div>
   )
 }

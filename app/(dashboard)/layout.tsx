@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default async function DashboardLayout({
   children,
@@ -71,6 +72,7 @@ export default async function DashboardLayout({
             </nav>
           </div>
           <div className="ml-auto flex items-center gap-4">
+            <ThemeToggle />
             <span className="text-sm text-muted-foreground">
               {user.email}
             </span>
