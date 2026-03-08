@@ -34,7 +34,7 @@ const STAGES: StageOption[] = [
   { id: 'acs',           label: 'ACS',               description: 'Ingest ACS 5-year data for all market tracts',     async: true  },
   { id: 'zillow',        label: 'FHFA / Zillow',     description: 'Ingest Zillow HPI CSV files (must be on server)',  async: true  },
   { id: 'hud_safmr',    label: 'HUD SAFMR',         description: 'Import SAFMR XLSX via upload (use Import SAFMR below)', async: true  },
-  { id: 'snapshots',     label: 'Snapshots',         description: 'Build tract snapshots (market-level; check server logs for result)', async: true },
+  { id: 'snapshots',     label: 'Snapshots',         description: 'Build tract snapshots (market-level; check server logs for result)', async: true, needsWorkspaceId: true },
   { id: 'neighborhoods', label: 'Neighborhoods',     description: 'Refresh neighborhood weights — requires workspace ID', async: true, needsWorkspaceId: true },
   { id: 'validate',      label: 'Validate',          description: 'Run readiness checks and show pass/fail',          async: false },
   { id: 'publish',       label: 'Validate & Publish','description': 'Validate then write availability record',        async: false },
